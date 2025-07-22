@@ -706,9 +706,3 @@ if ($this->authenticated == true) {
 } else {
     $response = new wsResponse(201, "No se ha podido validar la autenticación para hacer uso del servicio");
 }
-/* if($conexion){
-    if (!pg_close($conexion)) {
-        $e = pg_last_error($conexion) ;
-        $response = new wsResponse(402, "No fue posible cerrar la conexión. PN :". var_export($e, true));
-    }
-} */
