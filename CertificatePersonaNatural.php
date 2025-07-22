@@ -706,3 +706,5 @@ if ($this->authenticated == true) {
 } else {
     $response = new wsResponse(201, "No se ha podido validar la autenticación para hacer uso del servicio");
 }
+
+?>
