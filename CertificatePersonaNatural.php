@@ -401,7 +401,7 @@ if ($this->authenticated == true) {
         $certificadoEmpresa = 1;
     }
 
-    if (in_array($this->ra,   $this->ConvenioSinDuplicado)) { // EMSG  2023-09-12
+    if (in_array($this->ra, $this->ConvenioSinDuplicado)) { // EMSG  2023-09-12
         // Se anexa validacion para no registrar solicitudes duplicadas (Convenios configurados en config.ini) cedula, tipocertificado, vigencia , formato  
         $sql_prev = "select rs.ra_solicitud from  rapersona rp join rapersonasolicitud rps using(id_persona) join rasolicitudes rs using(ra_solicitud) 
         where rp.tipo_documento =  $tipoDoc and id_documento  = '{$documento}' and  rs.id_tipocertificado = $tipoCert and rs.id_vigencia = $vigenciaCert
@@ -409,7 +409,7 @@ if ($this->authenticated == true) {
         $x_sql_prev = pg_query($conexion, $sql_prev);
         if (pg_num_rows($x_sql_prev) > 0) {
             $mensaje = "Error, Actualmente posee una solicitud en estado de espera. Favor validar.";                    
-            $estado = 321 ;  
+            $estado = 321;  
             $response = new wsResponse($estado, $mensaje);
             return;                  
         }  
@@ -536,10 +536,9 @@ if ($this->authenticated == true) {
                     $estado = 405;
                     break;
                 }
-                if($token_andesid!="") {
+                if($token_andesid != "") {
                     $mensajetoken= " con token ".$token_andesid; 
-                }
-               
+                }               
                 $descripcion = "Se registra solicitud  $ra_solicitud tramitada, usuario de webservice $this->idFunc $login de entidad $nombre $id_ra $mensajetoken";
                 $sql_sol = "INSERT INTO auditoriasolicitud(id_evento, fecha,id_funcionario,descripcion, ra_solicitud) VALUES(39,current_timestamp,$this->idFunc, '" . pg_escape_string($descripcion) . "', $ra_solicitud);";
                 $resultado = pg_query($conexion, $sql_sol);
