@@ -50,7 +50,7 @@ if ($this->authenticated == true) {
         $dataVerificacion = '';
         $puntaje = 0;
     }
-    pg_query($conexion,"BEGIN;");
+    pg_query($conexion, "BEGIN;");
     $sql = sprintf("select * from tiposervicio where id_tipocertificado = %d;", $tipoCert);
     $resultado = pg_query($conexion, $sql);
     if (pg_num_rows($resultado) > 0) {
@@ -401,11 +401,11 @@ if ($this->authenticated == true) {
         $certificadoEmpresa = 1;
     }
 
-    if (in_array($this->ra,  $this->ConvenioSinDuplicado)) { // EMSG  2023-09-12
+    if (in_array($this->ra,   $this->ConvenioSinDuplicado)) { // EMSG  2023-09-12
         // Se anexa validacion para no registrar solicitudes duplicadas (Convenios configurados en config.ini) cedula, tipocertificado, vigencia , formato  
         $sql_prev = "select rs.ra_solicitud from  rapersona rp join rapersonasolicitud rps using(id_persona) join rasolicitudes rs using(ra_solicitud) 
         where rp.tipo_documento =  $tipoDoc and id_documento  = '{$documento}' and  rs.id_tipocertificado = $tipoCert and rs.id_vigencia = $vigenciaCert
-        and  rs.id_formaentregacertificado  =  $formato and rs.id_estado = 1 " ;
+        and  rs.id_formaentregacertificado  =  $formato and rs.id_estado = 1 ";
         $x_sql_prev = pg_query($conexion, $sql_prev);
         if (pg_num_rows($x_sql_prev) > 0) {
             $mensaje = "Error, Actualmente posee una solicitud en estado de espera. Favor validar.";                    
@@ -417,9 +417,9 @@ if ($this->authenticated == true) {
 
     // Si existe error retorna en el estado y mensaje.
     if ($mensaje != null) {
-        $detalle = pg_escape_string($conexion,$mensaje);
+        $detalle = pg_escape_string($conexion, $mensaje);
         $sql = sprintf("INSERT INTO auditoriaprincipal(id_proceso,fecha,id_funcionario,detalle) VALUES (2,current_timestamp,%d,'%s');", $this->idFunc, $detalle);
-        $rsAud = pg_query($conexion,$sql);
+        $rsAud = pg_query($conexion, $sql);
         if ($rsAud) {
             AppLog("Ingreso y elimino todo CVE");
         }
@@ -456,7 +456,7 @@ if ($this->authenticated == true) {
                 }
                 if ($b_certificado === true) {
                     $mensaje = "Se rechaza la solicitud porque se encontro certificado vigente que caduca el " . $fin_vigencia . " como "
-                            . "$tipo para $nombres $apellidos $documento ";
+                        . "$tipo para $nombres $apellidos $documento ";
                     $estado = 318;
                     break;
                 }
@@ -527,16 +527,18 @@ if ($this->authenticated == true) {
                     $nombre = $row[1];
                     $id_ra = $row[2];
                 }
-                $mensajetoken="";
+                $mensajetoken = "";
                 $token_andesid = $params->token_andesid;
-                $sql_tok="INSERT INTO rasolicitud_tokenandesid VALUES($ra_solicitud ,'$token_andesid')";
+                $sql_tok = "INSERT INTO rasolicitud_tokenandesid VALUES($ra_solicitud ,'$token_andesid')";
                 $resultado = pg_query($conexion, $sql_tok);
                 if ($resultado == FALSE) {
                     $mensaje = "Error, hubo un problema en el del token de validacion $sql_tok";
                     $estado = 405;
                     break;
                 }
-                if($token_andesid!="") { $mensajetoken= " con token ".$token_andesid; }
+                if($token_andesid!="") {
+                    $mensajetoken= " con token ".$token_andesid; 
+                }
                
                 $descripcion = "Se registra solicitud  $ra_solicitud tramitada, usuario de webservice $this->idFunc $login de entidad $nombre $id_ra $mensajetoken";
                 $sql_sol = "INSERT INTO auditoriasolicitud(id_evento, fecha,id_funcionario,descripcion, ra_solicitud) VALUES(39,current_timestamp,$this->idFunc, '" . pg_escape_string($descripcion) . "', $ra_solicitud);";
@@ -561,7 +563,6 @@ if ($this->authenticated == true) {
                 $row_result = pg_fetch_object($resultado_per);
                 $id_persona = $row_result->id_persona;               
                 
-
                 $sql_per_sol = sprintf("INSERT INTO rapersonasolicitud VALUES(%d,%d);", $ra_solicitud, $id_persona);
                 $resultado_per_sol = pg_query($conexion, $sql_per_sol);
                 if ($resultado_per_sol == FALSE) {
