@@ -37,7 +37,6 @@ if ($this->authenticated == true) {
     $mensaje = null;
     $estado = 0;
     $conexion = pg_connect("dbname=$this->DB user=$this->USR password=$this->PSWD host=$this->HOST port=$this->PORT ", "PGSQL_CONNECT_FORCE_NEW");
-    syslog(LOG_INFO, "Intentando conectar a la BD");
     if ($conexion == FALSE) {
         $mensaje = "No fue posible establecer conexion con la base de datos: ";
         $estado = 401;
@@ -51,7 +50,6 @@ if ($this->authenticated == true) {
         $dataVerificacion = '';
         $puntaje = 0;
     }
-    syslog(LOG_INFO, "tipo certificado " . $tipoCert);
     pg_query($conexion, "BEGIN;");
     $sql = sprintf("select * from tiposervicio where id_tipocertificado = %d;", $tipoCert);
     $resultado = pg_query($conexion, $sql);
