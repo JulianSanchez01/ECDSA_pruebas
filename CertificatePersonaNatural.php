@@ -408,11 +408,11 @@ if ($this->authenticated == true) {
         and  rs.id_formaentregacertificado  =  $formato and rs.id_estado = 1 ";
         $x_sql_prev = pg_query($conexion, $sql_prev);
         if (pg_num_rows($x_sql_prev) > 0) {
-            $mensaje = "Error, Actualmente posee una solicitud en estado de espera. Favor validar.";
-            $estado = 321;
+            $mensaje = "Error, Actualmente posee una solicitud en estado de espera. Favor validar.";                    
+            $estado = 321;  
             $response = new wsResponse($estado, $mensaje);
-            return;
-        }
+            return;                  
+        }  
     }
 
     // Si existe error retorna en el estado y mensaje.
@@ -462,6 +462,7 @@ if ($this->authenticated == true) {
                 }
                 $pass = rand('10000000', '99999999');
                 $password = AesCtr::encrypt($pass, $params->documento, 256);
+                $pin_descarga = "";
                 if ($params->pin != "") {
                     $pin_descarga = $params->pin;
                     if (validarPin($pin_descarga)) {
@@ -471,33 +472,22 @@ if ($this->authenticated == true) {
                     }
                     $cadena = $params->documento . $params->tipoDoc;
                     $newidalias = sha1($cadena . $pin_descarga);
-                    $sqlToken = "select * from tokenalias where id_alias = '$newidalias'";
+                    $sqlToken = "select id_alias from tokenalias where id_alias = '$newidalias'";
                     $resultToken = pg_query($conexion, $sqlToken);
                     if (pg_num_rows($resultToken) > 0) {
                         $mensaje = "Pin no valido, ya se encuentra registrado";
                         $estado = 708;
                         break;
                     }
-                } else {
-                    $pin_descarga = rand('10000000', '99999999');
-                }
+                } 
+                
+
                 $sql_sol = sprintf("INSERT INTO rasolicitudes(fecha_registro,
                         id_funcionario,id_tipocertificado,id_estado,id_formaentregacertificado,
                         id_vigencia,fecha_iniciovigencia,password,
                         ca_emite,verificacion,puntaje_identificacion,aprobar_emision) VALUES(current_timestamp,%d,%d,1,%d,%d,
-                        '%s','%s','%s','%s',%d,'%s') RETURNING ra_solicitud ;",
-                    $this->idFunc,
-                    $tipoCert,
-                    $formato,
-                    $vigenciaCert,
-                    $new_date,
-                    $password,
-                    $this->caEmite
-                    ,
-                    $dataVerificacion,
-                    $puntaje,
-                    $aprobarEmision
-                );
+                        '%s','%s','%s','%s',%d,'%s') RETURNING ra_solicitud ;", $this->idFunc, $tipoCert, $formato, $vigenciaCert, $new_date, $password, $this->caEmite
+                        , $dataVerificacion, $puntaje, $aprobarEmision);
                 $resultado_sol = pg_query($conexion, $sql_sol);
                 if ($resultado_sol == FALSE) {
                     $mensaje = "Error, hubo un problema en el registro de la solicitud ";
@@ -507,15 +497,28 @@ if ($this->authenticated == true) {
                 $row_result = pg_fetch_object($resultado_sol);
                 $ra_solicitud = $row_result->ra_solicitud;
 
-                /* Registro de soportes .zip en directorio de la NAS  ESMG 2024-04-15*/
-                $result_saveZip = updImagenDigitalRa($ra_solicitud, $DocAdj, $this->RUTA_SOPORTES, $conexion);
-
-                if ($result_saveZip === false) {
-                    $mensaje = "Error, hubo un problema en la actualización del path archivo .zip  ";
-                    $estado = 422;
+                // Generación de pin en funcion recursiva para evitar colisiones
+                $genPin = generateSecret($this->idFunc,$documento, $tipoDoc, $ra_solicitud,$pin_descarga) ;
+                if ($genPin == false) {
+                    $mensaje = "Error, hubo un problema generando el pin de descarga";
+                    $estado = 412;
                     break;
                 }
-                /* */
+                $alias = $genPin['alias'];
+                $id_alias = $genPin['id_alias'];
+                $secret_key = $genPin['secret_key'];
+                $secret = $genPin['secret'];
+                $pin_descarga = $secret_key;
+
+                 /* Registro de soportes .zip en directorio de la NAS  ESMG 2024-04-15*/
+                 $result_saveZip = updImagenDigitalRa($ra_solicitud, $DocAdj, $this->RUTA_SOPORTES,$conexion);
+                        
+                 if ($result_saveZip === false) {
+                     $mensaje = "Error, hubo un problema en la actualización del path archivo .zip  ";
+                     $estado = 422;
+                     break;
+                 }
+                 /* */                
 
                 $sql = "select login, nombre, id_ra from funcionariora join ra using(id_ra) where id_funcionario = $this->idFunc";
                 $res = pg_query($conexion, $sql);
@@ -533,10 +536,9 @@ if ($this->authenticated == true) {
                     $estado = 405;
                     break;
                 }
-                if ($token_andesid != "") {
-                    $mensajetoken = " con token " . $token_andesid;
-                }
-
+                if($token_andesid != "") {
+                    $mensajetoken= " con token ".$token_andesid; 
+                }               
                 $descripcion = "Se registra solicitud  $ra_solicitud tramitada, usuario de webservice $this->idFunc $login de entidad $nombre $id_ra $mensajetoken";
                 $sql_sol = "INSERT INTO auditoriasolicitud(id_evento, fecha,id_funcionario,descripcion, ra_solicitud) VALUES(39,current_timestamp,$this->idFunc, '" . pg_escape_string($descripcion) . "', $ra_solicitud);";
                 $resultado = pg_query($conexion, $sql_sol);
@@ -558,141 +560,47 @@ if ($this->authenticated == true) {
                     break;
                 }
                 $row_result = pg_fetch_object($resultado_per);
-                $id_persona = $row_result->id_persona;
-
-
-
+                $id_persona = $row_result->id_persona;               
+                
                 $sql_per_sol = sprintf("INSERT INTO rapersonasolicitud VALUES(%d,%d);", $ra_solicitud, $id_persona);
                 $resultado_per_sol = pg_query($conexion, $sql_per_sol);
                 if ($resultado_per_sol == FALSE) {
                     $mensaje = "Error, hubo un problema en el registro de la persona_solicitud";
                     $estado = 405;
                     break;
-                }
+                } 
 
-                $cadena = $documento . $tipoDoc;
-                $secret_key = $pin_descarga;
-                $id_alias = sha1($cadena . $secret_key);
-                $alias = $this->idFunc . sha1($ra_solicitud);
-                $secret = AesCtr::encrypt($pin_descarga, $params->documento, 256);
                 if (!empty($pkcs10)) {
                     if ($formato !== 3) {
                         $mensaje = "Error, el formato de entrega solicitado no requiere un pkcs10";
                         $estado = 431;
                         break;
                     }
-
                     // Envío de petición csr a través del Cliente.
-                    // $comando = "echo -n '$pkcs10' | openssl req -noout -modulus 2>&1";
-                    // exec($comando, $output, $return_var);
-                    // $output = explode("=", $output[0]);
-
-
-                    // if ($return_var !== 0) {
-                    //     $mensaje = "El pkcs10 digitado no es una solicitud de certificado";
-                    //     $estado = 406;
-                    //     break;
-                    // } else {
-                    //     $sqlCertificado = "select * from solicitudes where modulo_llave ='$output[1]';";
-                    //     $rsCertificado = pg_query($conexion, $sqlCertificado);
-                    //     if (pg_num_rows($rsCertificado) > 0) {
-                    //         $mensaje = "La solicitud de certificado ya esta siendo utilizada, por favor actualice el csr";
-                    //         $estado = 406;
-                    //         break;
-                    //     }
-                    // }
-
-                    //IMPLEMENTADO AMQM
-
-                    $comando = "echo -n '$pkcs10' | openssl req -noout -text 2>&1";
+                    $comando = "echo -n '$pkcs10' | openssl req -noout -modulus 2>&1";
                     exec($comando, $output, $return_var);
-
+                    $output = explode("=", $output[0]);
                     if ($return_var !== 0) {
                         $mensaje = "El pkcs10 digitado no es una solicitud de certificado";
                         $estado = 406;
                         break;
-                    }
-
-                    $outputText = implode("\n", $output);
-
-                    $modulo = '';
-                    // $mensaje = "prueba de modulo".$outputText;
-                    //         $estado = 406;
-                    //         break;
-                    if (strpos($outputText, "rsaEncryption") !== false) {
-                        // PARA RSA
-                        $comandoModulus = "echo -n '$pkcs10' | openssl req -noout -modulus 2>&1";
-
-			syslog(LOG_INFO,"el PKCS10 es: $pcks10");
-
-                        exec($comandoModulus, $outputModulus, $returnModulus);
-
-                        if ($returnModulus !== 0 || empty($outputModulus)) {
-                            $mensaje = "No se pudo obtener el modulus de la solicitud RSA";
-                            $estado = 406;
-                            break;
-                        }
-
-                        $outputParts = explode("=", $outputModulus[0]);
-                        if (count($outputParts) < 2) {
-                            $mensaje = "Formato inválido al obtener el modulus de la solicitud RSA";
-                            $estado = 406;
-                            break;
-                        }
-
-                        $modulo = trim($outputParts[1]);
-
-                    } elseif (strpos($outputText, "id-ecPublicKey") !== false) {
-                        // PARA ECDSA
-                        if (preg_match('/ASN1 OID: ([^\n]+)/', $outputText, $matches)) {
-                            $curveName = trim($matches[1]);
-
-                            if (!in_array($curveName, ['prime256v1', 'secp384r1', 'secp521r1','secp256k1'])) {
-                                $mensaje = "La curva utilizada no está permitida: $curveName";
-                                $estado = 406;
-                                break;
-                            }
-
-                           
-                            $modulo = hash('sha256', $pkcs10);
-
-                        } else {
-                            $mensaje = "No se pudo detectar la curva EC usada en el CSR";
-                            $estado = 406;
-                            break;
-                        }
                     } else {
-                        $mensaje = "El tipo de clave en el CSR no está soportado (debe ser RSA o EC)";
-                        $estado = 406;
-                        break;
+                        $sqlCertificado = "select id_solicitud from solicitudes where modulo_llave ='$output[1]';";
+                        $rsCertificado = pg_query($conexion, $sqlCertificado);
+                        if (pg_num_rows($rsCertificado) > 0) {
+                            $mensaje = "La solicitud de certificado ya esta siendo utilizada, por favor actualice el csr";
+                            $estado = 406;
+                            break;
+                        }
                     }
-
-                    $sqlCertificado = "SELECT * FROM solicitudes WHERE modulo_llave = '$modulo';";
-
-		    syslog(LOG_INFO,"La consulta es: $sqlCertificado");
-
-                    $rsCertificado = pg_query($conexion, $sqlCertificado);
-
-                    if (pg_num_rows($rsCertificado) > 0) {
-                        $mensaje = "La solicitud de certificado ya está siendo utilizada, por favor actualice el CSR";
-                        $estado = 406;
-                        break;
-                    }
-
-                    //FIN IMPLEMENTADO AMQM
-
                     $csr = $pkcs10;
-
-
                     $sql_upd = sprintf("UPDATE rasolicitudes SET pkcs10 = '%s' WHERE ra_solicitud = %d ", $csr, $ra_solicitud);
-
                     $resultado_upd = pg_query($conexion, $sql_upd);
                     if ($resultado_upd == FALSE) {
                         $mensaje = "Error, hubo un problema en la actualización del pkcs10";
                         $estado = 422;
                         break;
                     }
-
                 } else {
                     if ($params->formato == 3) {
                         if (empty($params->pkcs10)) {
@@ -701,7 +609,6 @@ if ($this->authenticated == true) {
                             break;
                         }
                     }
-
                     $insertStore = "insert into storepin (ra_solicitud, alias, pin_descarga, hash_pin) values ($ra_solicitud, '$alias', '$secret', encode(digest('$secret_key', 'sha256'), 'hex'))";
                     $resultadoStore = pg_query($conexion, $insertStore);
                     if ($resultadoStore == false) {
@@ -709,7 +616,6 @@ if ($this->authenticated == true) {
                         $estado = 412;
                         break;
                     }
-
                     $sql = sprintf("INSERT INTO tokenalias(id_alias,alias, almacenamiento, kek_alias) VALUES('%s','%s', %d, '%s') RETURNING id ;", $id_alias, $alias, 2, $this->KEKALIAS);
                     $resultado = pg_query($conexion, $sql);
                     if ($resultado == FALSE) {
@@ -719,8 +625,8 @@ if ($this->authenticated == true) {
                         break;
                     }
                     $row_result = pg_fetch_object($resultado);
-                    $id_token = $row_result->id;
-                    AppLog("llego hasta aca " . $alias . " " . $ra_solicitud);
+                    $id_token = $row_result->id;                    
+                    
                     list($estado, $output, $hash) = $this->generateKeys(array($alias, $secret_key, $ra_solicitud, $this->KEKALIAS));
                     if ($estado != 0 || $output == "" || $hash == "") {
                         $mensaje = "Error, hubo un problema en la generación de las llaves y en la generación de la petición CSR";
@@ -749,61 +655,50 @@ if ($this->authenticated == true) {
                     }
                 }
                 break;
-            default:
+            default :
                 $estado = 202;
                 $mensaje = "El tipo de certificado aún no está definido";
                 break;
         }
-
-
         if ($mensaje != null) {
-            pg_query($conexion, "ROLLBACK;");
+            pg_query($conexion,"ROLLBACK;");
+            
+            $d = delImagenDigitalRa($ra_solicitud, $this->RUTA_SOPORTES) ;
 
-            $d = delImagenDigitalRa($ra_solicitud, $this->RUTA_SOPORTES);
-
-            $detalle = pg_escape_string($conexion, $mensaje);
+            $detalle = pg_escape_string($conexion,$mensaje);
             $sql = sprintf("INSERT INTO auditoriaprincipal(id_proceso,fecha,id_funcionario,detalle) VALUES (2,current_timestamp,%d,'%s');", $this->idFunc, $detalle);
-            $rsAud = pg_query($conexion, $sql);
+            $rsAud = pg_query($conexion,$sql);
             if ($rsAud !== false) {
                 AppLog("Ingreso y elimino todo CPN");
             }
         } else {
-
-            pg_query($conexion, "COMMIT;");
+            pg_query($conexion,"COMMIT;");
             $mensaje = $ra_solicitud;
-	    syslog(LOG_INFO,"LLega aqui enemision automática");
             if ($this->EMISION_AUTOMATICA == "t") {
-                $params = array(
-                    "tipoDoc" => $tipoDoc,
-                    "documento" => $documento,
-                    "rasolicitud" => $ra_solicitud,
-                    "tipoCert" => $tipoCert,
-                    "id_vigencia" => $vigenciaCert,
-                    "iFormaEntrega" => $formato,
-                    "observaciones" => "Emision Automatica por convenio $this->NOMBRE_RA",
-                    "notas_estudio" => null
-                );
+                $params = array("tipoDoc" => $tipoDoc, "documento" => $documento, "rasolicitud" => $ra_solicitud, "tipoCert" => $tipoCert, "id_vigencia" => $vigenciaCert,
+                    "iFormaEntrega" => $formato, "observaciones" => "Emision Automatica por convenio $this->NOMBRE_RA", "notas_estudio" => null);
                 $o = $this->EmitirCertificado(json_encode($params));
                 $estado = $o->estado;
                 $mensaje = $o->mensaje;
-            } else {
+            }else{
                 /*
                 NOTIFICACIÓN EMAIL A SUSCRIPTOR PARA PROCESO DE VALIDACION DE 
                 */
-
-                $sqlConvenioValidacion = "select solicitar_validacion_identidad from ra where id_ra=" . $id_ra;
+                
+                $sqlConvenioValidacion="select solicitar_validacion_identidad from ra where id_ra=".$id_ra;
                 $result = pg_query($conexion, $sqlConvenioValidacion);
                 $row = pg_fetch_assoc($result);
                 $campo = $row['solicitar_validacion_identidad'];
 
-                if ($campo == 't') {
-                    $insertSolicitarValidacion = "insert into convenio_envio_solicitud_validacion (ra_solicitud, id_ra, estado_envio) values ($ra_solicitud, $id_ra, 0)";
-                    $resultado = pg_query($conexion, $sql_sol);
-                    $resultadoSolicitarValidacion = pg_query($conexion, $insertSolicitarValidacion);
-                    pg_query($conexion, "COMMIT;");
+                if($campo == 't')
+                {        
+                $insertSolicitarValidacion = "insert into convenio_envio_solicitud_validacion (ra_solicitud, id_ra, estado_envio) values ($ra_solicitud, $id_ra, 0)";                               
+                $resultado = pg_query($conexion, $sql_sol);
+                $resultadoSolicitarValidacion = pg_query($conexion, $insertSolicitarValidacion);
+                pg_query($conexion,"COMMIT;");
                 }
-
-
+                
+                
             }
         }
     }
